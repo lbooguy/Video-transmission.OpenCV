@@ -1,3 +1,1 @@
-# -
-Работа над курсовой работой на кафедру 
-AWFfgSDvgsvs
+Work on the course work for the Department
