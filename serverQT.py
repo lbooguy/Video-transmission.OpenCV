@@ -3,15 +3,15 @@ import sys
 import numpy
 import struct
 import time
+import pickle
 import gc
 import socket
 from PyQt5.QtWidgets import  QWidget, QLabel, QApplication
 from PyQt5.QtCore import QThread, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QImage, QPixmap
 
-class Thread(QThread):
-    changePixmap = pyqtSignal(QImage)
-    def recvall(sock, n):
+
+def recvall(sock, n):
         # Функция для получения n байт или возврата None если получен EOF
         data = b''
         while len(data) < n:
@@ -22,7 +22,7 @@ class Thread(QThread):
         
         return data
     
-    def recv_msg(sock):
+def recv_msg(sock):
         # Получение длины сообщения и распаковка в integer
         raw_msglen = recvall(sock, 4)
         if not raw_msglen:
@@ -30,18 +30,35 @@ class Thread(QThread):
         msglen = struct.unpack('<I', raw_msglen)[0]
         # Получение данных
         return recvall(sock, msglen)
+
+    
+class Thread(QThread):
+    changePixmap = pyqtSignal(QImage)
+    
     def run(self):
+        data = b""
+        payload_size = struct.calcsize("L") 
         while True:
-            stringData=recv_msg(conn)
-            data = numpy.frombuffer(stringData, dtype='uint8')
-            decimg=cv2.imdecode(data,1)
-            rgbImage = cv2.cvtColor(decimg, cv2.COLOR_BGR2RGB)
+            while len(data) < payload_size:
+                data += conn.recv(4096)
+            packed_msg_size = data[:payload_size]
+            data = data[payload_size:]
+            msg_size = struct.unpack("L", packed_msg_size)[0]
+            while len(data) < msg_size:
+                data += conn.recv(4096)
+            frame_data = data[:msg_size]
+            data = data[msg_size:]
+    ###
+	
+            frame=pickle.loads(frame_data)
+            frame=cv2.imdecode(frame, 1)
+			
+            rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgbImage.shape
             bytesPerLine = ch * w
             convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
             p = convertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
             self.changePixmap.emit(p)
-            cv2.waitKey(0)
             gc.collect()
 
 
@@ -83,6 +100,4 @@ print("connected")
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = App()
-    thr=Thread()
-    thr.run()
     sys.exit(app.exec_())
